@@ -127,6 +127,37 @@ brm_transform_marginal <- function(
   )
   data[[attr(data, "brm_outcome")]] <- seq_len(nrow(data))
   grid <- transform_marginal_grid(data = data)
+  transform <- brm_transform_marginal_impl(
+    data = data,
+    grid = grid,
+    formula = formula,
+    average_within_subgroup = average_within_subgroup
+  )
+  colnames(transform) <- paste0(prefix, colnames(transform))
+  rownames(transform) <- brm_transform_marginal_names_rows(
+    data = data,
+    formula = formula,
+    grid = grid
+  )
+  transform
+}
+
+brm_transform_marginal_impl <- function(
+  data,
+  grid,
+  formula,
+  average_within_subgroup
+) {
+  UseMethod("brm_transform_marginal_impl")
+}
+
+#' @export
+brm_transform_marginal_impl.brms_mmrm_data <- function(
+  data,
+  grid,
+  formula,
+  average_within_subgroup
+) {
   grid <- transform_marginal_continuous(
     data = data,
     grid = grid,
@@ -141,14 +172,17 @@ brm_transform_marginal <- function(
     average_within_subgroup = average_within_subgroup
   )
   names <- colnames(brms::make_standata(data = data, formula = formula)$X)
-  transform <- as.matrix(transform)[, names, drop = FALSE]
-  colnames(transform) <- paste0(prefix, colnames(transform))
-  rownames(transform) <- brm_transform_marginal_names_rows(
-    data = data,
-    formula = formula,
-    grid = grid
-  )
-  transform
+  as.matrix(transform)[, names, drop = FALSE]
+}
+
+#' @export
+brm_transform_marginal_impl.brms_mmrm_archetype <- function(
+  data,
+  grid,
+  formula,
+  average_within_subgroup
+) {
+  browser()
 }
 
 transform_marginal_grid <- function(data) {
