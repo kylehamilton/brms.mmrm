@@ -117,15 +117,26 @@
 #'   centered and the underlying model matrix has full rank.
 #' @param baseline_subgroup Logical of length 1.
 #' @param variance Character of length 1, variance structure for the
-#'   residuals. `"heterogeneous"` declares a different variance component
-#'   for each discrete time point, `"homogeneous"` declares a single
-#'   scalar variance shared by all time points. In either case, the variance
-#'   components are shared by all patients, and different patients are
-#'   modeled as independent.
+#'   residuals. Options:
 #'
-#'   The variance components are encoded as parameters `b_sigma` in the model.
+#'     * `"heterogeneous"` (default): each time point gets its own standard
+#'       deviation parameter, and standard deviation parameters are
+#'       shared across treatment groups.
+#'     * `"heterogeneous_group"`: there is a separate standard deviation
+#'       parameter for each combination of treatment group and discrete
+#'       time point.
+#'     * `"homogeneous"`: the model has a single standard deviation parameter
+#'       shared by all treatment groups and all time points.
+#'
+#'   In all cases above, the standard deviation parameters
+#'   are shared by all patients,
+#'   and different patients are modeled as independent.
+#'
+#'   The standard deviation parameters are encoded as parameters
+#'   `b_sigma` in the model.
 #'   Each `b_sigma` is a standard deviation of residuals on the natural
-#'   log scale.
+#'   log scale. The `sigma` variable on the linear scale is a deterministic
+#'   function of `b_sigma`: i.e. `sigma = exp(b_sigma)`.
 #'
 #'   The variance structure is encoded in the
 #'   `sigma ~ ...` part of the output formula. To see the variance
@@ -473,6 +484,7 @@ brm_formula.brms_mmrm_archetype <- function(
     message = "moving_average_order must be a nonnegative integer of length 1"
   )
   name_outcome <- attr(data, "brm_outcome")
+  name_group <- attr(data, "brm_group")
   name_time <- attr(data, "brm_time")
   name_patient <- attr(data, "brm_patient")
   interest <- attr(data, "brm_archetype_interest")
@@ -493,11 +505,7 @@ brm_formula.brms_mmrm_archetype <- function(
   terms <- terms[nzchar(terms)]
   right <- paste(terms, collapse = " + ")
   formula_fixed <- stats::as.formula(paste(name_outcome, "~", right))
-  formula_sigma <- if_any(
-    variance == "heterogeneous",
-    stats::as.formula(paste("sigma ~ 0 +", name_time)),
-    sigma ~ 1
-  )
+  formula_sigma <- brm_formula_sigma(variance, name_group, name_time)
   brms_formula <- brms::brmsformula(formula = formula_fixed, formula_sigma)
   formula <- brm_formula_archetype_new(
     formula = brms_formula,
@@ -517,6 +525,17 @@ brm_formula.brms_mmrm_archetype <- function(
 
 term <- function(labels, condition) {
   if_any(condition, paste0(labels, collapse = ":"), character(0L))
+}
+
+brm_formula_sigma <- function(variance, name_group, name_time) {
+  variance <- as.character(variance)
+  if (identical(variance, "heterogeneous")) {
+    stats::as.formula(paste("sigma ~ 0 +", name_time))
+  } else if (identical(variance, "heterogeneous_group")) {
+    stats::as.formula(paste0("sigma ~ 0 + ", name_group, ":", name_time))
+  } else if (identical(variance, "homogeneous")) {
+    sigma ~ 1
+  }
 }
 
 term_correlation <- function(
@@ -736,7 +755,7 @@ brm_formula_validate_variance <- function(variance) {
     variance,
     "variance arg must be a nonempty character string"
   )
-  choices <- c("heterogeneous", "homogeneous")
+  choices <- c("heterogeneous", "heterogeneous_group", "homogeneous")
   assert(
     variance %in% choices,
     message = paste(
